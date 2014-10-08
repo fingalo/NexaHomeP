@@ -9,6 +9,7 @@
 #define MAX(a,b) (((a)>(b))?(a):(b))
 	// Persistent data
 #define S_SENSOR_FLAG_PKEY 1
+#define S_EVENT_FLAG_PKEY 2
 	
 	// Device methods
 #define TELLSTICK_TURNON	(1)
@@ -45,13 +46,16 @@ int num_menu_icons = 0;
 #define MAX_DEVICE_LIST_ITEMS (30)
 #define MAX_SENSOR_LIST_ITEMS (30)
 #define MAX_STATUS_LIST_ITEMS (20)
+#define MAX_EVENT_LIST_ITEMS (20)
 #define MAX_DEVICE_NAME_LENGTH (16)
 #define MAX_SENSOR_NAME_LENGTH (16)
 #define MAX_STATUS_NAME_LENGTH (16)
+#define MAX_EVENT_NAME_LENGTH (16)
+#define MAX_EVENT_TIME_LENGTH (20)
 #define MAX_TEMP_LENGTH (6)
 #define MAX_HUM_LENGTH (4)
  
-enum  { MENU_SECTION_STATUS,MENU_SECTION_ENVIRONMENT, MENU_SECTION_DEVICE, MENU_SECTION_NUMBER};
+enum  { MENU_SECTION_STATUS,MENU_SECTION_ENVIRONMENT,  MENU_SECTION_EVENT, MENU_SECTION_DEVICE, MENU_SECTION_NUMBER};
 	
 typedef struct {
 	int id;
@@ -59,6 +63,7 @@ typedef struct {
 	int state;
 	int methods;
 	int dimvalue;
+	char eventd[MAX_DEVICE_NAME_LENGTH+1];
 } Device;
 
 typedef struct {
@@ -73,9 +78,15 @@ typedef struct {
 	char hum[MAX_HUM_LENGTH+1];
 } Sensor;
 
+typedef struct {
+	char name[MAX_EVENT_NAME_LENGTH+1];
+	char time[MAX_EVENT_TIME_LENGTH+1];
+} Event;
+
 static Device s_device_list_items[MAX_DEVICE_LIST_ITEMS];
 static Status s_status_list_items[MAX_STATUS_LIST_ITEMS];
 static Sensor s_sensor_list_items[MAX_SENSOR_LIST_ITEMS];
+static Event s_event_list_items[MAX_EVENT_LIST_ITEMS];
 static int s_device_count = 0;
 static int s_status_current = 0;
 static int s_status_count = 0;
@@ -84,12 +95,31 @@ static int s_sensor_count = 0;
 static bool s_sensor_flag = false;
 static int s_sensor_show_count = 0;
 
+static int s_event_count = 0;
+static bool s_event_flag = false;
+static int s_event_show_count = 0;
+
 void out_sent_handler(DictionaryIterator *sent, void *context) {
 	APP_LOG(APP_LOG_LEVEL_DEBUG, "outgoing message was delivered");
 }
 
 void out_failed_handler(DictionaryIterator *failed, AppMessageResult reason, void *context) {
 	APP_LOG(APP_LOG_LEVEL_DEBUG, "outgoing message failed");
+}
+
+void setEvent(char *name, char  *time) {
+	if (s_event_count >= MAX_EVENT_LIST_ITEMS) {
+		return;
+	}
+ 	strncpy(s_event_list_items[s_event_count].name, name, MAX_EVENT_NAME_LENGTH);
+ 	strncpy(s_event_list_items[s_event_count].time, time, MAX_EVENT_TIME_LENGTH);
+	s_event_count++;
+
+	if (s_event_flag == true){
+		s_event_show_count  = s_event_count;
+	} else {
+		s_event_show_count = 1;
+	}	
 }
 
 void setSensor(int id, char *name, char *temp, char *hum) {
@@ -109,7 +139,7 @@ void setSensor(int id, char *name, char *temp, char *hum) {
 	}	
 }
 
-void setDevice(int id, char *name, int state, int methods, int dimvalue) {
+void setDevice(int id, char *name, int state, int methods, int dimvalue, char *eventd) {
 	if (s_device_count >= MAX_DEVICE_LIST_ITEMS) {
 		return;
 	}
@@ -118,6 +148,7 @@ void setDevice(int id, char *name, int state, int methods, int dimvalue) {
 	s_device_list_items[s_device_count].methods = methods;
 	s_device_list_items[s_device_count].dimvalue = dimvalue;
  	strncpy(s_device_list_items[s_device_count].name, name, MAX_DEVICE_NAME_LENGTH);
+ 	strncpy(s_device_list_items[s_device_count].eventd, eventd, MAX_DEVICE_NAME_LENGTH);
 	s_device_count++;
 }
 
@@ -158,6 +189,16 @@ void in_received_handler(DictionaryIterator *received, void *context) {
 		layer_set_hidden(text_layer_get_layer(textLayer), false);
 		layer_set_hidden(menu_layer_get_layer(menuLayer), true);
 		
+	}  else if (strcmp(moduleTuple->value->cstring, "event") == 0) {
+		
+		Tuple *nameTuple = dict_find(received, AKEY_NAME);
+		Tuple *tempTuple = dict_find(received, AKEY_TEMP);
+
+		if (!tempTuple || !nameTuple ){
+			return;
+		} 
+		setEvent(nameTuple->value->cstring,tempTuple->value->cstring );
+
 	}  else if (strcmp(moduleTuple->value->cstring, "status") == 0) {
 		
 		Tuple *idTuple = dict_find(received, AKEY_ID);
@@ -177,8 +218,9 @@ void in_received_handler(DictionaryIterator *received, void *context) {
 		Tuple *stateTuple = dict_find(received, AKEY_STATE);
 		Tuple *methodsTuple = dict_find(received, AKEY_METHODS);
 		Tuple *dimvalueTuple = dict_find(received, AKEY_DIMVALUE);
+		Tuple *tempTuple = dict_find(received, AKEY_TEMP);
 
-		if (!idTuple || !nameTuple || !stateTuple || !methodsTuple || !dimvalueTuple) {
+		if (!idTuple || !nameTuple || !stateTuple || !methodsTuple || !dimvalueTuple || !tempTuple) {
 			return;
 		} 
     for(int i=0; i<s_device_count; i++) { 
@@ -193,7 +235,8 @@ void in_received_handler(DictionaryIterator *received, void *context) {
 							nameTuple->value->cstring, 
 							stateTuple->value->int8, 
 							methodsTuple->value->int16, 
-							dimvalueTuple->value->int16);
+							dimvalueTuple->value->int16,
+							tempTuple->value->cstring);
 		
 	} else if (strcmp(moduleTuple->value->cstring, "sensor") == 0) {
 		
@@ -241,6 +284,9 @@ static uint16_t get_num_rows_callback(MenuLayer *menu_layer, uint16_t section_in
 
 		case MENU_SECTION_DEVICE:
       return s_device_count;
+		
+		case MENU_SECTION_EVENT:
+      return s_event_show_count;
 
 		default:
       return 0;
@@ -288,6 +334,13 @@ static void draw_row_callback(GContext* ctx, Layer *cell_layer, MenuIndex *cell_
       }			
     }  
     menu_cell_basic_draw(ctx, cell_layer, device->name, NULL, Img_status);
+
+	} else 	if (cell_index->section == MENU_SECTION_EVENT){
+		
+    Event* event;		
+    event = &s_event_list_items[cell_index->row];
+    menu_cell_basic_draw(ctx, cell_layer, event->name, event->time, NULL);
+		
 	} else {
 		Status* status;		
 		if (s_status_show_count == 1) {
@@ -313,21 +366,49 @@ static void menu_draw_header_callback(GContext* ctx, const Layer *cell_layer, ui
       break;
  
 		case MENU_SECTION_ENVIRONMENT:	
+			if (s_sensor_show_count == 0)
+				break;
 			if (s_sensor_flag == false)
-  	    menu_cell_basic_header_draw(ctx, cell_layer, "Environment        >>>>");
+  	    menu_cell_basic_header_draw(ctx, cell_layer, "Environment >>>>");
 			else
 	      menu_cell_basic_header_draw(ctx, cell_layer, "Environment");
       break;	
  
 		case MENU_SECTION_DEVICE:	
+			if (s_device_count == 0)
+				break;
       menu_cell_basic_header_draw(ctx, cell_layer, "Devices");
       break;
+
+		case MENU_SECTION_EVENT:	
+			if (s_event_show_count == 0)
+				break;
+			if (s_event_flag == false)
+  	    menu_cell_basic_header_draw(ctx, cell_layer, "Events >>>>");
+			else
+	      menu_cell_basic_header_draw(ctx, cell_layer, "Events");
+      break;	
   }
 }
 
 static int16_t menu_get_header_height_callback(MenuLayer *menu_layer, uint16_t section_index, void *data) {
   // This is a define provided in pebble.h that you may use for the default height
-  return MENU_CELL_BASIC_HEADER_HEIGHT;
+	switch (section_index) {
+		
+		case MENU_SECTION_DEVICE:	
+			if (s_device_count == 0)
+				return 0;
+			break;
+		case MENU_SECTION_ENVIRONMENT:	
+			if (s_sensor_show_count == 0)
+				return 0;
+			break;	
+		case MENU_SECTION_EVENT:	
+			if (s_event_show_count == 0)
+				return 0;
+			break;	
+	}
+	return MENU_CELL_BASIC_HEADER_HEIGHT;
 }
 
 static void select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *data) {
@@ -345,6 +426,21 @@ static void select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *
 		menu_layer_set_selected_index( menuLayer, index, MenuRowAlignCenter , true );  	
 		menu_layer_reload_data(menuLayer);
    
+	} else if (cell_index->section == MENU_SECTION_EVENT) {
+
+		if (s_event_flag == false){
+			s_event_flag = true;
+			s_event_show_count  = s_event_count;
+		} else {
+			s_event_flag = false;
+			s_event_show_count = 1;
+		}
+		MenuIndex index;
+		index.section = MENU_SECTION_EVENT;
+		index.row =  0;
+		menu_layer_set_selected_index( menuLayer, index, MenuRowAlignCenter , true );  	
+		menu_layer_reload_data(menuLayer);
+
 	} else if (cell_index->section == MENU_SECTION_STATUS) {
 
 		if (s_status_show_count == 1) {
@@ -393,7 +489,7 @@ static void select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *
 }
 
 static void select_long_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *data) {
-	if(cell_index->section == MENU_SECTION_ENVIRONMENT) 
+	if(cell_index->section != MENU_SECTION_DEVICE) 
 		return;
 	Device* device = &s_device_list_items[cell_index->row];
 	if (device->methods & TELLSTICK_DIM) {
@@ -488,6 +584,7 @@ static void init(void) {
 	
 	const bool animated = true;
 	s_sensor_flag = persist_exists(S_SENSOR_FLAG_PKEY) ? persist_read_bool(S_SENSOR_FLAG_PKEY) : false;
+	s_event_flag = persist_exists(S_EVENT_FLAG_PKEY) ? persist_read_bool(S_EVENT_FLAG_PKEY) : false;
 
 	window_stack_push(window, animated);
 	app_message_register_inbox_received(in_received_handler);
@@ -500,6 +597,7 @@ static void init(void) {
 
 static void deinit(void) {
 	persist_write_bool(S_SENSOR_FLAG_PKEY, s_sensor_flag);
+	persist_write_bool(S_EVENT_FLAG_PKEY, s_event_flag);
 	window_destroy(window);
 }
 

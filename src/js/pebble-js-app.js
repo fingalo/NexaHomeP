@@ -58,9 +58,9 @@ function parseHtmlEnteties(str) {
         return String.fromCharCode(num);
     });
 }
-
 var devices = {};
 var options = {};
+var events = {};
 
 function fetchDevicesNexaHome( ) {
 	var req = new XMLHttpRequest();
@@ -80,25 +80,43 @@ function fetchDevicesNexaHome( ) {
 				var jsons = JSON.parse(decodetext);
 
 				pebbleSendQueue.send({ "module": "clear" });
-		
+				
 				var current = 0;
 				options = jsons.status.mode.options;
 				
 				for (var j in options) {
 					if (jsons.status.mode.current == options[j]) current = j;
-
+		
 					pebbleSendQueue.send({
 						module:		'status',
 						name:			options[j],
 						state:		parseInt(current),
 						id:				parseInt(j),
 					});
+				}
+							
+				var name;
+				
+				if(localStorage.getItem('nexahome_events') == 'true') {			
+					events = jsons.events;
+					for (j in events) {					
+						name = events[j].name;					
+						if (name.length > 16) {
+							name = name.substr(0, 16);
+						} 
 
+						pebbleSendQueue.send({
+							module:		'event',
+							name:			name,
+							temp:			events[j].time +" " + events[j].cmd,
+						});
+					}
 				}
 				
 				devices = jsons.devices;
-				for(var i in devices) {
-					var name = devices[i].name;
+				for (var i in devices) {
+				
+					name = devices[i].name;
 					var module = "device";
 					
 					if (name.length > 16) {
@@ -132,20 +150,21 @@ function fetchDevicesNexaHome( ) {
 					else {
 						devices[i].level = level;
 					}
-					
-					if (localStorage.getItem(devices[i].name) == 'true' || !localStorage.getItem(devices[i].name)) {
-						
-						pebbleSendQueue.send({
-							module:		module,
-							name:			name,
-							state:		parseInt(state),
-							dimvalue: parseInt(level),
-							id:				parseInt(devices[i].id),
-							temp:			temp,
-							methods:	parseInt(methods) 
-						});
-						
-					}
+					if((localStorage.getItem('nexahome_devices') == 'true' && module == "device") || 
+						(localStorage.getItem('nexahome_sensors') == 'true' && module == "sensor")) {			
+						if (localStorage.getItem(devices[i].name) == 'true' || !localStorage.getItem(devices[i].name)) {
+
+							pebbleSendQueue.send({
+								module:		module,
+								name:			name,
+								state:		parseInt(state),
+								dimvalue: parseInt(level),
+								id:				parseInt(devices[i].id),
+								temp:			temp,
+								methods:	parseInt(methods) 
+							});
+						}
+					}				
 				}				
 				pebbleSendQueue.send({ "module": "done" });				
       } else {
@@ -200,16 +219,12 @@ Pebble.addEventListener("appmessage", function(e) {
 			if (devices[i].status == 'ON') {
 				state = 2;
 				param = passw + '&bsh=deviceOff("' + id + '");';
-				if (devices[i].dimmable === true) {
-					devices[i].level = 0;
-					param = passw + '&bsh=deviceLevel("' + id + '","' + devices[i].level + '%")';
-				}
 			} else {
 				state = 1;
 				param = passw +  '&bsh=deviceOn("' + id + '");';
 				if (devices[i].dimmable === true) {
-					devices[i].level = 100;
-					param = passw + '&bsh=deviceLevel("' + id + '","' + devices[i].level + '%")';
+				devices[i].level = 100;
+				param = passw + '&bsh=deviceLevel("' + id + '","' + devices[i].level + '%")';
 				}
 			}
 		}
@@ -239,6 +254,7 @@ Pebble.addEventListener("appmessage", function(e) {
 			state: parseInt(state),
 			methods: parseInt(methods),
 			dimvalue: parseInt(devices[i].level),
+			temp:	"",
 			id: parseInt(id),
 		});
 
@@ -246,23 +262,27 @@ Pebble.addEventListener("appmessage", function(e) {
 });
 
 Pebble.addEventListener("showConfiguration", function() {
-	var confurl = 'https://dl.dropboxusercontent.com/u/29205101/cn11.html';
+	var confurl = 'https://dl.dropboxusercontent.com/u/29205101/cn111.html';
 	confurl = confurl + '?URL=';
 	if (localStorage.getItem('URL') !== '') {
 				confurl = confurl + localStorage.getItem('URL');
-		}
-	var passw = "";
-	if (localStorage.getItem('passw') !== '') {
-		passw = localStorage.getItem('passw');
 	}
-	passw="";
+	
+	var passw =  localStorage.getItem('passw') ? localStorage.getItem('passw') : "";
 	confurl = confurl + '&passw=' + passw;
+	
+	var stat =  localStorage.getItem('nexahome_sensors') ? localStorage.getItem('nexahome_sensors') : 'true';
+	confurl = confurl + "&nexahome_sensors=" + stat;
+	
+	stat =  localStorage.getItem('nexahome_devices') ? localStorage.getItem('nexahome_devices') : 'true';
+	confurl = confurl + "&nexahome_devices=" + stat;
+	
+	stat =  localStorage.getItem('nexahome_events') ? localStorage.getItem('nexahome_events') : 'true';
+	confurl = confurl + "&nexahome_events=" + stat;
+	
 	confurl = confurl + "&" + encodeURIComponent("Select devices to include in watch app:") + "=cblabel";
 	for(var i in devices) {
-		var stat = 'true';
-		if(devices[i].name in localStorage)
-			if (localStorage.getItem(devices[i].name))
-				stat = localStorage.getItem(devices[i].name);
+		stat =  localStorage.getItem(devices[i].name) ? localStorage.getItem(devices[i].name) : 'true';
 		confurl = confurl + '&' + encodeURIComponent(devices[i].name) +'=' + encodeURIComponent(stat);
 	}
 	Pebble.openURL(confurl);
@@ -285,7 +305,6 @@ Pebble.addEventListener("webviewclosed", function(e) {
 	if (empty(options) === false) {
 		localStorage.clear();
 	}
-
 	for ( var i in options )
 	{
 		if ( options.hasOwnProperty( i ) )
