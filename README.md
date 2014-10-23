@@ -15,9 +15,11 @@ Pressing middle key in menu Environment (sensors) will expand/collapse the senso
 
 1.3
 - Added events list from Nexahome.
-- Confgure show/hide for section sensors, devices and events
+- Confgure show/hide for section sensors, devices and events.
+ 
 1.4 
 - Not published.
+
 1.5
 - Fixed passwordhandling
 - Added timestamps on sensors and devices.
