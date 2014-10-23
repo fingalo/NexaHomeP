@@ -10,6 +10,8 @@
 	// Persistent data
 #define S_SENSOR_FLAG_PKEY 1
 #define S_EVENT_FLAG_PKEY 2
+#define S_SHOWEVENT_FLAG_PKEY 3
+#define S_SHOWTIMESTAMP_FLAG_PKEY 4
 	
 	// Device methods
 #define TELLSTICK_TURNON	(1)
@@ -34,11 +36,13 @@ enum {
   AKEY_METHODS,
   AKEY_DIMVALUE,
   AKEY_TYPE,
+  AKEY_TIMESTAMP,
 };
 
 static Window *window;
 static TextLayer *textLayer;
 static MenuLayer *menuLayer;
+AppTimer *timer;
 static GBitmap *TelldusOn, *TelldusOff, *NexaHome;
 static GBitmap  *dim_icons[5];
 int num_menu_icons = 0;
@@ -54,7 +58,9 @@ int num_menu_icons = 0;
 #define MAX_EVENT_TIME_LENGTH (20)
 #define MAX_TEMP_LENGTH (6)
 #define MAX_HUM_LENGTH (4)
- 
+#define SHOW_EVENT (2)
+#define SHOW_TIMESTAMP (1)
+
 enum  { MENU_SECTION_STATUS,MENU_SECTION_ENVIRONMENT,  MENU_SECTION_EVENT, MENU_SECTION_DEVICE, MENU_SECTION_NUMBER};
 	
 typedef struct {
@@ -64,6 +70,7 @@ typedef struct {
 	int methods;
 	int dimvalue;
 	char eventd[MAX_DEVICE_NAME_LENGTH+1];
+	char timestamp[MAX_DEVICE_NAME_LENGTH+1];
 } Device;
 
 typedef struct {
@@ -76,6 +83,7 @@ typedef struct {
 	char name[MAX_SENSOR_NAME_LENGTH+1];
 	char temp[MAX_TEMP_LENGTH+1];
 	char hum[MAX_HUM_LENGTH+1];
+	char timestamp[MAX_DEVICE_NAME_LENGTH+1];
 } Sensor;
 
 typedef struct {
@@ -98,6 +106,15 @@ static int s_sensor_show_count = 0;
 static int s_event_count = 0;
 static bool s_event_flag = false;
 static int s_event_show_count = 0;
+static int s_stamp_flag = 0;
+static bool s_stampenv_flag = false;
+
+void timer_callback(void *data) {
+			s_stampenv_flag = 0;//! s_stampenv_flag;
+			layer_mark_dirty(menu_layer_get_layer(menuLayer));
+			timer = NULL;
+   //Register next execution
+}
 
 void out_sent_handler(DictionaryIterator *sent, void *context) {
 	APP_LOG(APP_LOG_LEVEL_DEBUG, "outgoing message was delivered");
@@ -122,7 +139,7 @@ void setEvent(char *name, char  *time) {
 	}	
 }
 
-void setSensor(int id, char *name, char *temp, char *hum) {
+void setSensor(int id, char *name, char *temp, char *hum, char* timestamp) {
 	if (s_sensor_count >= MAX_SENSOR_LIST_ITEMS) {
 		return;
 	}
@@ -130,6 +147,7 @@ void setSensor(int id, char *name, char *temp, char *hum) {
  	strncpy(s_sensor_list_items[s_sensor_count].name, name, MAX_SENSOR_NAME_LENGTH);
  	strncpy(s_sensor_list_items[s_sensor_count].temp, temp, MAX_TEMP_LENGTH);
  	strncpy(s_sensor_list_items[s_sensor_count].hum, hum, MAX_HUM_LENGTH);
+ 	strncpy(s_sensor_list_items[s_sensor_count].timestamp, timestamp, MAX_DEVICE_NAME_LENGTH);
 	s_sensor_count++;
 	
 	if (s_sensor_flag == true){
@@ -139,7 +157,7 @@ void setSensor(int id, char *name, char *temp, char *hum) {
 	}	
 }
 
-void setDevice(int id, char *name, int state, int methods, int dimvalue, char *eventd) {
+void setDevice(int id, char *name, int state, int methods, int dimvalue, char *eventd, char* timestamp) {
 	if (s_device_count >= MAX_DEVICE_LIST_ITEMS) {
 		return;
 	}
@@ -149,6 +167,7 @@ void setDevice(int id, char *name, int state, int methods, int dimvalue, char *e
 	s_device_list_items[s_device_count].dimvalue = dimvalue;
  	strncpy(s_device_list_items[s_device_count].name, name, MAX_DEVICE_NAME_LENGTH);
  	strncpy(s_device_list_items[s_device_count].eventd, eventd, MAX_DEVICE_NAME_LENGTH);
+ 	strncpy(s_device_list_items[s_device_count].timestamp, timestamp, MAX_DEVICE_NAME_LENGTH);
 	s_device_count++;
 }
 
@@ -219,8 +238,9 @@ void in_received_handler(DictionaryIterator *received, void *context) {
 		Tuple *methodsTuple = dict_find(received, AKEY_METHODS);
 		Tuple *dimvalueTuple = dict_find(received, AKEY_DIMVALUE);
 		Tuple *tempTuple = dict_find(received, AKEY_TEMP);
+		Tuple *timestampTuple = dict_find(received, AKEY_TIMESTAMP);
 
-		if (!idTuple || !nameTuple || !stateTuple || !methodsTuple || !dimvalueTuple || !tempTuple) {
+		if (!idTuple || !nameTuple || !stateTuple || !methodsTuple || !dimvalueTuple || !tempTuple || !timestampTuple) {
 			return;
 		} 
     for(int i=0; i<s_device_count; i++) { 
@@ -236,15 +256,18 @@ void in_received_handler(DictionaryIterator *received, void *context) {
 							stateTuple->value->int8, 
 							methodsTuple->value->int16, 
 							dimvalueTuple->value->int16,
-							tempTuple->value->cstring);
+							tempTuple->value->cstring,
+							timestampTuple->value->cstring
+						 );
 		
 	} else if (strcmp(moduleTuple->value->cstring, "sensor") == 0) {
 		
 		Tuple *idTuple = dict_find(received, AKEY_ID);
 		Tuple *nameTuple = dict_find(received, AKEY_NAME);
 		Tuple *tempTuple = dict_find(received, AKEY_TEMP);
+		Tuple *timestampTuple = dict_find(received, AKEY_TIMESTAMP);
 
-		if (!idTuple || !nameTuple || !tempTuple ) {
+		if (!idTuple || !nameTuple || !tempTuple || !tempTuple || !timestampTuple) {
 			return;
 		} 
     for(int i=0; i<s_sensor_count; i++) { 
@@ -252,7 +275,11 @@ void in_received_handler(DictionaryIterator *received, void *context) {
         return;
       }
     }
-	  setSensor(idTuple->value->int8, nameTuple->value->cstring, tempTuple->value->cstring,"");
+	  setSensor(idTuple->value->int8, 
+							nameTuple->value->cstring, 
+							tempTuple->value->cstring,
+							"",
+							timestampTuple->value->cstring);
 		menu_layer_reload_data(menuLayer);
 	}
 
@@ -305,12 +332,18 @@ static void draw_row_callback(GContext* ctx, Layer *cell_layer, MenuIndex *cell_
       p1 = '%';
     }  
       p1 = '%';
+		
 		if (strlen(sensor->temp) > 2)
 			snprintf (buff1,30,"        %s%c%cC",sensor->temp,0xc2,0xb0);
 		else
 			snprintf (buff1,30,"        %s%c",sensor->temp,p1);
-			
-    	menu_cell_basic_draw(ctx, cell_layer, buff1, sensor->name,  NULL);
+
+		if (s_stampenv_flag)		
+			menu_cell_basic_draw(ctx, cell_layer, buff1, sensor->timestamp,  NULL);
+		else
+			menu_cell_basic_draw(ctx, cell_layer, buff1, sensor->name,  NULL);
+
+		
 		
 	} else 	if (cell_index->section == MENU_SECTION_DEVICE){
 		
@@ -333,8 +366,14 @@ static void draw_row_callback(GContext* ctx, Layer *cell_layer, MenuIndex *cell_
         Img_status = TelldusOff; 
       }			
     }  
-    menu_cell_basic_draw(ctx, cell_layer, device->name, NULL, Img_status);
-
+   // menu_cell_basic_draw(ctx, cell_layer, device->name, NULL, Img_status);
+		if (s_stamp_flag == SHOW_EVENT && device->eventd[0] != '\0')
+			menu_cell_basic_draw(ctx, cell_layer,  device->name, device->eventd, Img_status);
+		else if (s_stamp_flag == SHOW_TIMESTAMP) 
+			menu_cell_basic_draw(ctx, cell_layer,  device->name, device->timestamp, Img_status);
+		else 
+    	menu_cell_basic_draw(ctx, cell_layer,  device->name, NULL, Img_status);		
+			
 	} else 	if (cell_index->section == MENU_SECTION_EVENT){
 		
     Event* event;		
@@ -384,9 +423,9 @@ static void menu_draw_header_callback(GContext* ctx, const Layer *cell_layer, ui
 			if (s_event_show_count == 0)
 				break;
 			if (s_event_flag == false)
-  	    menu_cell_basic_header_draw(ctx, cell_layer, "Events >>>>");
+  	    menu_cell_basic_header_draw(ctx, cell_layer, "Events Queue >>>>");
 			else
-	      menu_cell_basic_header_draw(ctx, cell_layer, "Events");
+	      menu_cell_basic_header_draw(ctx, cell_layer, "Events Queue");
       break;	
   }
 }
@@ -489,35 +528,47 @@ static void select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *
 }
 
 static void select_long_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *data) {
-	if(cell_index->section != MENU_SECTION_DEVICE) 
-		return;
-	Device* device = &s_device_list_items[cell_index->row];
-	if (device->methods & TELLSTICK_DIM) {
-		DictionaryIterator *iter;
-		app_message_outbox_begin(&iter);
-		Tuplet module = TupletCString(AKEY_MODULE, "device");
-		dict_write_tuplet(iter, &module);
-		Tuplet id = TupletInteger(AKEY_ID, device->id);
-		dict_write_tuplet(iter, &id);
+	if(cell_index->section == MENU_SECTION_DEVICE)  {
 		
-		int c;
-		
-		if (device->dimvalue == 100)
-			c = 0;
-		else {
-			c = device->dimvalue / 25;
-			c = c * 25 + 25;
-			if (c > 100) c = 0;
+		Device* device = &s_device_list_items[cell_index->row];
+		if (device->methods & TELLSTICK_DIM) {
+			DictionaryIterator *iter;
+			app_message_outbox_begin(&iter);
+			Tuplet module = TupletCString(AKEY_MODULE, "device");
+			dict_write_tuplet(iter, &module);
+			Tuplet id = TupletInteger(AKEY_ID, device->id);
+			dict_write_tuplet(iter, &id);
+
+			int c;
+
+			if (device->dimvalue == 100)
+				c = 0;
+			else {
+				c = device->dimvalue / 25;
+				c = c * 25 + 25;
+				if (c > 100) c = 0;
+			}
+
+			device->dimvalue = c; 
+
+			layer_mark_dirty(menu_layer_get_layer(menuLayer));
+			Tuplet dimvalue = TupletInteger(AKEY_DIMVALUE, device->dimvalue);
+			dict_write_tuplet(iter, &dimvalue);
+			Tuplet methods = TupletInteger(AKEY_METHODS, TELLSTICK_DIM);
+			dict_write_tuplet(iter, &methods);
+			app_message_outbox_send();
+		} else {		
+			s_stamp_flag++;
+			if (s_stamp_flag > 2) s_stamp_flag = 0;
+			layer_mark_dirty(menu_layer_get_layer(menuLayer));
 		}
 
-		device->dimvalue = c; 
-				
-		layer_mark_dirty(menu_layer_get_layer(menuLayer));
-		Tuplet dimvalue = TupletInteger(AKEY_DIMVALUE, device->dimvalue);
-		dict_write_tuplet(iter, &dimvalue);
-		Tuplet methods = TupletInteger(AKEY_METHODS, TELLSTICK_DIM);
-		dict_write_tuplet(iter, &methods);
-		app_message_outbox_send();
+	}
+	else if(cell_index->section == MENU_SECTION_ENVIRONMENT) {		
+   		if (!s_stampenv_flag) 
+				timer = app_timer_register(5000, timer_callback, NULL);
+			s_stampenv_flag = true; //!s_stampenv_flag;
+			layer_mark_dirty(menu_layer_get_layer(menuLayer));
 	}
 }
 
@@ -562,7 +613,8 @@ static void window_load(Window *window) {
 }
 
 static void window_unload(Window *window) {
-  menu_layer_destroy(menuLayer);
+	if (timer != NULL) app_timer_cancel(timer);
+	menu_layer_destroy(menuLayer);
 	text_layer_destroy(textLayer);
   gbitmap_destroy(TelldusOn);
   gbitmap_destroy(TelldusOff);
@@ -585,6 +637,8 @@ static void init(void) {
 	const bool animated = true;
 	s_sensor_flag = persist_exists(S_SENSOR_FLAG_PKEY) ? persist_read_bool(S_SENSOR_FLAG_PKEY) : false;
 	s_event_flag = persist_exists(S_EVENT_FLAG_PKEY) ? persist_read_bool(S_EVENT_FLAG_PKEY) : false;
+//	s_stampenv_flag = persist_exists(S_SHOWEVENT_FLAG_PKEY) ? persist_read_bool(S_SHOWEVENT_FLAG_PKEY) : false;
+	s_stamp_flag = persist_exists(S_SHOWTIMESTAMP_FLAG_PKEY) ? persist_read_int(S_SHOWTIMESTAMP_FLAG_PKEY) : 0;
 
 	window_stack_push(window, animated);
 	app_message_register_inbox_received(in_received_handler);
@@ -596,8 +650,11 @@ static void init(void) {
 }
 
 static void deinit(void) {
+
 	persist_write_bool(S_SENSOR_FLAG_PKEY, s_sensor_flag);
 	persist_write_bool(S_EVENT_FLAG_PKEY, s_event_flag);
+//	persist_write_bool(S_SHOWEVENT_FLAG_PKEY, s_stampenv_flag);
+	persist_write_int(S_SHOWTIMESTAMP_FLAG_PKEY, s_stamp_flag);
 	window_destroy(window);
 }
 

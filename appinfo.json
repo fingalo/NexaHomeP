@@ -9,6 +9,7 @@
         "name": 2,
         "state": 4,
         "temp": 5,
+        "timestamp": 10,
         "type": 9
     },
     "capabilities": [
@@ -70,7 +71,7 @@
     "shortName": "NexaHome P",
     "uuid": "530e2964-f11c-48a0-b2c5-c36239a9601c",
     "versionCode": 1,
-    "versionLabel": "1.3",
+    "versionLabel": "1.5",
     "watchapp": {
         "watchface": false
     }

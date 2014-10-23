@@ -1,5 +1,6 @@
 var URL = '';
 var passw = '';
+var psw = '';
 
 function httpPost(url, params, cb) {
 	var p = '';
@@ -65,7 +66,7 @@ var events = {};
 function fetchDevicesNexaHome( ) {
 	var req = new XMLHttpRequest();
 	var urlen = URL+'/nexahome?json=yes';
-	urlen = urlen;// + passw;
+	urlen = urlen + passw;
 	req.open('GET',encodeURI(urlen));
 	req.onreadystatechange = function() {
 		if (req.readyState == 4) {
@@ -97,8 +98,8 @@ function fetchDevicesNexaHome( ) {
 							
 				var name;
 				
+				events = jsons.events;
 				if(localStorage.getItem('nexahome_events') == 'true') {			
-					events = jsons.events;
 					for (j in events) {					
 						name = events[j].name;					
 						if (name.length > 16) {
@@ -117,6 +118,18 @@ function fetchDevicesNexaHome( ) {
 				for (var i in devices) {
 				
 					name = devices[i].name;
+					
+					var evntd = "No Event";
+//					if(localStorage.getItem('nexahome_events_indevice') == 'true') {			
+						for (j in events) {			
+							if (events[j].name == name) {
+								evntd = events[j].time + " " + events[j].cmd;
+								evntd = evntd.replace(/-/g, "");
+								evntd = evntd.replace(/20/,"");
+								break;
+							}
+						}
+//					}
 					var module = "device";
 					
 					if (name.length > 16) {
@@ -150,6 +163,11 @@ function fetchDevicesNexaHome( ) {
 					else {
 						devices[i].level = level;
 					}
+					
+					if (module == "device") {
+						temp = evntd;
+					}
+
 					if((localStorage.getItem('nexahome_devices') == 'true' && module == "device") || 
 						(localStorage.getItem('nexahome_sensors') == 'true' && module == "sensor")) {			
 						if (localStorage.getItem(devices[i].name) == 'true' || !localStorage.getItem(devices[i].name)) {
@@ -161,7 +179,8 @@ function fetchDevicesNexaHome( ) {
 								dimvalue: parseInt(level),
 								id:				parseInt(devices[i].id),
 								temp:			temp,
-								methods:	parseInt(methods) 
+								methods:	parseInt(methods),
+								timestamp: devices[i].timestamp
 							});
 						}
 					}				
@@ -179,7 +198,8 @@ function fetchDevicesNexaHome( ) {
 Pebble.addEventListener("ready", function(e) {
 	
 	if (localStorage.getItem('passw') !== '') {
-		passw = '&psw=' + localStorage.getItem('passw');
+		psw = localStorage.getItem('passw');
+		passw = '&psw=' + psw;
 	}
 
 	if (localStorage.getItem('URL') !== '') {
@@ -256,6 +276,7 @@ Pebble.addEventListener("appmessage", function(e) {
 			dimvalue: parseInt(devices[i].level),
 			temp:	"",
 			id: parseInt(id),
+			timestamp: devices[i].timestamp
 		});
 
 	}
@@ -279,7 +300,13 @@ Pebble.addEventListener("showConfiguration", function() {
 	
 	stat =  localStorage.getItem('nexahome_events') ? localStorage.getItem('nexahome_events') : 'true';
 	confurl = confurl + "&nexahome_events=" + stat;
-	
+/*
+	stat =  localStorage.getItem('nexahome_events_indevice') ? localStorage.getItem('nexahome_events_indevice') : 'true';
+	confurl = confurl + "&nexahome_events_indevice=" + stat;
+
+	stat =  localStorage.getItem('nexahome_timestamp') ? localStorage.getItem('nexahome_timestamp') : 'true';
+	confurl = confurl + "&nexahome_timestamp=" + stat;
+*/
 	confurl = confurl + "&" + encodeURIComponent("Select devices to include in watch app:") + "=cblabel";
 	for(var i in devices) {
 		stat =  localStorage.getItem(devices[i].name) ? localStorage.getItem(devices[i].name) : 'true';
@@ -301,7 +328,6 @@ Pebble.addEventListener("webviewclosed", function(e) {
 	var options = encodeURIComponent(e.response);
   options = options.replace(/%83%C2/g,"");
   options = JSON.parse(decodeURIComponent(options));
-	
 	if (empty(options) === false) {
 		localStorage.clear();
 	}
@@ -323,8 +349,8 @@ Pebble.addEventListener("webviewclosed", function(e) {
 	}	
 	
 	if(options.hasOwnProperty( 'passw'))
-		passw = options.passw;
-	localStorage.setItem('passw', passw);
+		psw = options.passw;
+	localStorage.setItem('passw', psw);
 	
 });
 
