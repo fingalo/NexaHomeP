@@ -12,6 +12,7 @@
 #define S_EVENT_FLAG_PKEY 2
 #define S_SHOWEVENT_FLAG_PKEY 3
 #define S_SHOWTIMESTAMP_FLAG_PKEY 4
+#define S_SENSOR_FORMAT_FLAG_PKEY 5
 	
 	// Device methods
 #define TELLSTICK_TURNON	(1)
@@ -101,6 +102,7 @@ static int s_status_count = 0;
 static int s_status_show_count = 0;
 static int s_sensor_count = 0;
 static bool s_sensor_flag = false;
+static bool s_sensor_format_flag = false;
 static int s_sensor_show_count = 0;
 
 static int s_event_count = 0;
@@ -191,6 +193,7 @@ void in_received_handler(DictionaryIterator *received, void *context) {
 	}
 	
 	if (strcmp(moduleTuple->value->cstring, "done") == 0) {
+//	APP_LOG(APP_LOG_LEVEL_DEBUG, "incoming message DONE received");
 		
 		layer_set_hidden(text_layer_get_layer(textLayer), true);
 		layer_set_hidden(menu_layer_get_layer(menuLayer), false);
@@ -240,7 +243,7 @@ void in_received_handler(DictionaryIterator *received, void *context) {
 		Tuple *tempTuple = dict_find(received, AKEY_TEMP);
 		Tuple *timestampTuple = dict_find(received, AKEY_TIMESTAMP);
 
-		if (!idTuple || !nameTuple || !stateTuple || !methodsTuple || !dimvalueTuple || !tempTuple || !timestampTuple) {
+		if (!idTuple || !nameTuple || !stateTuple || !methodsTuple || !dimvalueTuple || !tempTuple || !timestampTuple ) {
 			return;
 		} 
     for(int i=0; i<s_device_count; i++) { 
@@ -266,8 +269,9 @@ void in_received_handler(DictionaryIterator *received, void *context) {
 		Tuple *nameTuple = dict_find(received, AKEY_NAME);
 		Tuple *tempTuple = dict_find(received, AKEY_TEMP);
 		Tuple *timestampTuple = dict_find(received, AKEY_TIMESTAMP);
+		Tuple *humidityTuple = dict_find(received, AKEY_HUM);
 
-		if (!idTuple || !nameTuple || !tempTuple || !tempTuple || !timestampTuple) {
+		if (!idTuple || !nameTuple || !tempTuple || !tempTuple || !timestampTuple || !humidityTuple) {
 			return;
 		} 
     for(int i=0; i<s_sensor_count; i++) { 
@@ -278,7 +282,7 @@ void in_received_handler(DictionaryIterator *received, void *context) {
 	  setSensor(idTuple->value->int8, 
 							nameTuple->value->cstring, 
 							tempTuple->value->cstring,
-							"",
+							humidityTuple->value->cstring,
 							timestampTuple->value->cstring);
 		menu_layer_reload_data(menuLayer);
 	}
@@ -331,20 +335,37 @@ static void draw_row_callback(GContext* ctx, Layer *cell_layer, MenuIndex *cell_
     if (sensor->hum[0] != '\0') {
       p1 = '%';
     }  
-      p1 = '%';
-		
-		if (strlen(sensor->temp) > 2)
-			snprintf (buff1,30,"        %s%c%cC",sensor->temp,0xc2,0xb0);
-		else
-			snprintf (buff1,30,"        %s%c",sensor->temp,p1);
 
+		if (strlen(sensor->temp) > 2) {
+			if (s_sensor_format_flag) {
+				snprintf (buff1,30,"        %s%c%cC   %s%c",sensor->temp,0xc2,0xb0,sensor->hum,p1);
+			} 
+			else {
+				snprintf (buff1,30,"%s%c%cC   %s%c",sensor->temp,0xc2,0xb0,sensor->hum,p1);
+			}
+		}
+		else {			
+			p1 = '%';
+			if (s_sensor_format_flag) 
+				snprintf (buff1,30,"        %s%c",sensor->temp,p1);
+			else
+				snprintf (buff1,30,"%s%c",sensor->temp,p1);
+		}
+
+		char buff2[30] = "";
 		if (s_stampenv_flag)		
-			menu_cell_basic_draw(ctx, cell_layer, buff1, sensor->timestamp,  NULL);
+			snprintf (buff2,19,"%s",sensor->timestamp);
 		else
-			menu_cell_basic_draw(ctx, cell_layer, buff1, sensor->name,  NULL);
+			snprintf (buff2,19,"%s",sensor->name);
 
-		
-		
+		if (!s_sensor_format_flag) {
+			graphics_context_set_text_color(ctx, GColorBlack);
+			graphics_draw_text(ctx, buff1, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD), GRect(30, 15, 110, 30), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+			graphics_draw_text(ctx, buff2, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD), GRect(2, -7, 140, 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+			}
+		else {
+			menu_cell_basic_draw(ctx, cell_layer, buff1, buff2,  NULL);
+		}
 	} else 	if (cell_index->section == MENU_SECTION_DEVICE){
 		
     Device* device;		
@@ -565,10 +586,12 @@ static void select_long_callback(MenuLayer *menu_layer, MenuIndex *cell_index, v
 
 	}
 	else if(cell_index->section == MENU_SECTION_ENVIRONMENT) {		
-   		if (!s_stampenv_flag) 
-				timer = app_timer_register(5000, timer_callback, NULL);
-			s_stampenv_flag = true; //!s_stampenv_flag;
-			layer_mark_dirty(menu_layer_get_layer(menuLayer));
+		if (!s_stampenv_flag) 
+			timer = app_timer_register(5000, timer_callback, NULL);
+		else
+			s_sensor_format_flag = !s_sensor_format_flag;
+		s_stampenv_flag = true; //!s_stampenv_flag;
+		layer_mark_dirty(menu_layer_get_layer(menuLayer));
 	}
 }
 
@@ -639,6 +662,7 @@ static void init(void) {
 	s_event_flag = persist_exists(S_EVENT_FLAG_PKEY) ? persist_read_bool(S_EVENT_FLAG_PKEY) : false;
 //	s_stampenv_flag = persist_exists(S_SHOWEVENT_FLAG_PKEY) ? persist_read_bool(S_SHOWEVENT_FLAG_PKEY) : false;
 	s_stamp_flag = persist_exists(S_SHOWTIMESTAMP_FLAG_PKEY) ? persist_read_int(S_SHOWTIMESTAMP_FLAG_PKEY) : 0;
+	s_sensor_format_flag = persist_exists(S_SENSOR_FORMAT_FLAG_PKEY) ? persist_read_bool(S_SENSOR_FORMAT_FLAG_PKEY) : false;
 
 	window_stack_push(window, animated);
 	app_message_register_inbox_received(in_received_handler);
@@ -655,6 +679,7 @@ static void deinit(void) {
 	persist_write_bool(S_EVENT_FLAG_PKEY, s_event_flag);
 //	persist_write_bool(S_SHOWEVENT_FLAG_PKEY, s_stampenv_flag);
 	persist_write_int(S_SHOWTIMESTAMP_FLAG_PKEY, s_stamp_flag);
+	persist_write_bool(S_SENSOR_FORMAT_FLAG_PKEY, s_sensor_format_flag);
 	window_destroy(window);
 }
 
