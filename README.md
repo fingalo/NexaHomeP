@@ -32,6 +32,7 @@ Also uncheck the sensor with id 52 checkbox in the configuraion screen.
 1.5
 - Fixed passwordhandling
 - Added timestamps on sensors and devices.
+- Toggle sensor name text big/small.
 
 1.6
 - Fixed dimmer values when long press.
