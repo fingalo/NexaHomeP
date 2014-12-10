@@ -19,6 +19,7 @@ Configuration of sensors allow to show the tempaerature and the hunidity on the 
 In the configuration screen all sensors are listed with the Nexahome device id..
 ex. If your temperature sensor ID is 51 and hunidity sensor id is 52 you enter 52 in the configuration field for sensor 51.
 Also uncheck the sensor 52 checkbox in the configuraion screen.
+
 ![Ex:](https://dl.dropboxusercontent.com/u/29205101/Screenshot_2014-12-10-22-29-34.png)
 
 1.3
