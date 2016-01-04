@@ -179,7 +179,6 @@ function fetchDevicesNexaHome( ) {
 					if((localStorage.getItem('nexahome_devices') == 'true' && module == "device") || 
 						(localStorage.getItem('nexahome_sensors') == 'true' && module == "sensor")) {			
 						if (localStorage.getItem(devices[i].name) == 'true' || !localStorage.getItem(devices[i].name)) {
-
 							pebbleSendQueue.send({
 								module:		module,
 								name:			name,
@@ -297,7 +296,7 @@ Pebble.addEventListener("appmessage", function(e) {
 });
 
 Pebble.addEventListener("showConfiguration", function() {
-	var confurl = 'https://dl.dropboxusercontent.com/u/29205101/cn112.html';
+	var confurl = 'https://dl.dropboxusercontent.com/u/29205101/cn112test.html';
 	confurl = confurl + '?URL=';
 	if (localStorage.getItem('URL') !== '') {
 				confurl = confurl + localStorage.getItem('URL');
@@ -338,8 +337,8 @@ Pebble.addEventListener("webviewclosed", function(e) {
   // webview close	
 	// adjust ios return to many characters for åöä
 	var options = encodeURIComponent(e.response);
-  options = options.replace(/%83%C2/g,"");
-  options = JSON.parse(decodeURIComponent(options));
+	options = options.replace(/%83%C2/g,"");
+  options = JSON.parse(decodeURIComponent(e.response));
 	if (empty(options) === false) {
 		localStorage.clear();
 	}

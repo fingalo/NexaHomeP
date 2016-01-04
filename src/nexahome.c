@@ -45,7 +45,9 @@ static TextLayer *textLayer;
 static MenuLayer *menuLayer;
 AppTimer *timer;
 static GBitmap *TelldusOn, *TelldusOff, *NexaHome;
+static GBitmap *TelldusOnI, *TelldusOffI, *NexaHomeI;
 static GBitmap  *dim_icons[5];
+static GBitmap  *dim_icons_i[5];
 int num_menu_icons = 0;
 
 #define MAX_DEVICE_LIST_ITEMS (30)
@@ -284,7 +286,7 @@ void in_received_handler(DictionaryIterator *received, void *context) {
 							tempTuple->value->cstring,
 							humidityTuple->value->cstring,
 							timestampTuple->value->cstring);
-		menu_layer_reload_data(menuLayer);
+		//menu_layer_reload_data(menuLayer);
 	}
 
 }
@@ -294,7 +296,13 @@ void in_dropped_handler(AppMessageResult reason, void *context) {
 }
 
 static int16_t get_cell_height_callback(struct MenuLayer *menu_layer, MenuIndex *cell_index, void *data) {
-  return 44;
+	
+#if defined(PBL_ROUND)
+	if( !menu_layer_is_index_selected(menuLayer, cell_index))
+		return 44;
+	else
+#endif
+	return PBL_IF_ROUND_ELSE(60, 44);
 }
 
 static uint16_t menu_get_num_sections_callback(MenuLayer *menu_layer, void *data) {
@@ -326,7 +334,9 @@ static uint16_t get_num_rows_callback(MenuLayer *menu_layer, uint16_t section_in
 
 static void draw_row_callback(GContext* ctx, Layer *cell_layer, MenuIndex *cell_index, void *data) {
   GBitmap *Img_status;
-
+	
+	graphics_context_set_compositing_mode(ctx, GCompOpSet);
+	
 	if (cell_index->section == MENU_SECTION_ENVIRONMENT){
 		
     Sensor* sensor = &s_sensor_list_items[cell_index->row];
@@ -359,13 +369,31 @@ static void draw_row_callback(GContext* ctx, Layer *cell_layer, MenuIndex *cell_
 			snprintf (buff2,19,"%s",sensor->name);
 
 		if (!s_sensor_format_flag) {
-			graphics_context_set_text_color(ctx, GColorBlack);
-			graphics_draw_text(ctx, buff1, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD), GRect(30, 15, 110, 30), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
-			graphics_draw_text(ctx, buff2, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD), GRect(2, -7, 140, 2), GTextOverflowModeTrailingEllipsis, GTextAlignmentLeft, NULL);
+			if (menu_cell_layer_is_highlighted( cell_layer)) {
+				graphics_context_set_text_color(ctx, GColorWhite);
+				graphics_context_set_stroke_color(ctx, GColorWhite);
+			}
+			else {
+				graphics_context_set_text_color(ctx, GColorBlack);				
+				graphics_context_set_stroke_color(ctx, GColorBlack);
+			}
+
+			#if defined(PBL_ROUND)
+			if ( menu_layer_is_index_selected(menuLayer, cell_index) ){ 
+			#endif
+				menu_cell_basic_draw(ctx, cell_layer, buff2,  " " , NULL);
+				GRect bounds = layer_get_bounds(cell_layer);
+				graphics_draw_text(ctx, buff1, fonts_get_system_font(FONT_KEY_GOTHIC_24_BOLD), GRect( bounds.origin.x, bounds.origin.y + bounds.size.h/2-5, bounds.size.w, bounds.size.h/2), GTextOverflowModeTrailingEllipsis, GTextAlignmentCenter, NULL);
+			#if defined(PBL_ROUND)
+			} else {
+				menu_cell_basic_draw(ctx, cell_layer, buff2, NULL,  NULL);			
+			}
+			#endif			
 			}
 		else {
 			menu_cell_basic_draw(ctx, cell_layer, buff1, buff2,  NULL);
 		}
+		
 	} else 	if (cell_index->section == MENU_SECTION_DEVICE){
 		
     Device* device;		
@@ -373,48 +401,114 @@ static void draw_row_callback(GContext* ctx, Layer *cell_layer, MenuIndex *cell_
 
     if (device->methods & TELLSTICK_DIM) {
      if (device->state == TELLSTICK_TURNOFF) {
-        Img_status = dim_icons[0]; 
+				if (menu_cell_layer_is_highlighted( cell_layer)) {
+					Img_status = dim_icons_i[0]; 
+				} else {
+					Img_status = dim_icons[0]; 				
+				}
       } 
       else if (device->state == TELLSTICK_TURNON) {
-        Img_status = dim_icons[(device->dimvalue + 24)/25];    
+				if (menu_cell_layer_is_highlighted( cell_layer)) {
+	        Img_status = dim_icons_i[(device->dimvalue + 24)/25];    
+				} else {
+				 	Img_status = dim_icons[(device->dimvalue + 24)/25];    
+				}
       } else {
-        Img_status = dim_icons[(device->dimvalue + 24)/25];    
+				if (menu_cell_layer_is_highlighted( cell_layer)) {
+	        Img_status = dim_icons_i[(device->dimvalue + 24)/25];    
+				} else {
+				 	Img_status = dim_icons[(device->dimvalue + 24)/25];    
+				}
       }			
     }
     else {			
-      Img_status = TelldusOn; 
+				if (menu_cell_layer_is_highlighted( cell_layer)) {
+					Img_status = TelldusOnI; 
+				} else {
+					Img_status = TelldusOn; 
+				}
       if (device->state == TELLSTICK_TURNOFF) {
-        Img_status = TelldusOff; 
-      }			
+ 				if (menu_cell_layer_is_highlighted( cell_layer)) {
+					Img_status = TelldusOffI; 
+				} else {
+					Img_status = TelldusOff; 
+				}
+			}
     }  
-   // menu_cell_basic_draw(ctx, cell_layer, device->name, NULL, Img_status);
-		if (s_stamp_flag == SHOW_EVENT && device->eventd[0] != '\0')
-			menu_cell_basic_draw(ctx, cell_layer,  device->name, device->eventd, Img_status);
-		else if (s_stamp_flag == SHOW_TIMESTAMP) 
-			menu_cell_basic_draw(ctx, cell_layer,  device->name, device->timestamp, Img_status);
-		else 
-    	menu_cell_basic_draw(ctx, cell_layer,  device->name, NULL, Img_status);		
+
+#if defined(PBL_COLOR)
+	 if (device->state != TELLSTICK_TURNOFF) graphics_context_set_text_color(ctx, GColorYellow);				
+#endif
+#if defined(PBL_ROUND)
+		if ( menu_layer_is_index_selected(menuLayer, cell_index) ) { 
+#endif			
+			if (s_stamp_flag == SHOW_EVENT && device->eventd[0] != '\0') 
+					menu_cell_basic_draw(ctx, cell_layer,  device->name, device->eventd, Img_status);
+			else if (s_stamp_flag == SHOW_TIMESTAMP) 
+					menu_cell_basic_draw(ctx, cell_layer,  device->name, device->timestamp, Img_status);
+			else 
+				menu_cell_basic_draw(ctx, cell_layer,  device->name, NULL, Img_status);		
+#if defined(PBL_ROUND)
+		} else {
+    	menu_cell_basic_draw(ctx, cell_layer,  device->name, NULL, NULL);					
+		}	
+#endif			
+			
 			
 	} else 	if (cell_index->section == MENU_SECTION_EVENT){
 		
     Event* event;		
     event = &s_event_list_items[cell_index->row];
-    menu_cell_basic_draw(ctx, cell_layer, event->name, event->time, NULL);
-		
+
+		#if defined(PBL_ROUND)
+		if ( menu_layer_is_index_selected(menuLayer, cell_index))
+		#endif
+    	menu_cell_basic_draw(ctx, cell_layer, event->name, event->time, NULL);
+		#if defined(PBL_ROUND)
+		else
+    	menu_cell_basic_draw(ctx, cell_layer, event->name, NULL, NULL);
+		#endif			
+
 	} else {
 		Status* status;		
 		if (s_status_show_count == 1) {
 			status = &s_status_list_items[s_status_current];
-			Img_status = NexaHome;
+#if defined(PBL_ROUND)
+		if ( menu_layer_is_index_selected(menuLayer, cell_index) ){ 
+#endif			
+			if (menu_cell_layer_is_highlighted( cell_layer)) {
+	      Img_status = NexaHomeI; 
+			} else {
+				Img_status = NexaHome; 
+			}
+#if defined(PBL_ROUND)
+		}  else {
+			Img_status = NULL;
+		}
+#endif			
+	
 		} else {
 			status = &s_status_list_items[cell_index->row];
 			if (cell_index->row == s_status_current)
-				Img_status = TelldusOn;
+			if (menu_cell_layer_is_highlighted( cell_layer)) {
+	      Img_status = TelldusOnI; 
+			} else {
+				Img_status = TelldusOn; 
+			}
 			else
-				Img_status = TelldusOff;
+ 				if (menu_cell_layer_is_highlighted( cell_layer)) {
+					Img_status = TelldusOffI; 
+				} else {
+					Img_status = TelldusOff; 
+				}
 		}
 		menu_cell_basic_draw(ctx, cell_layer, status->name, NULL, Img_status);
 	}
+}
+
+void set_sec_text(GContext* ctx, char * text, const Layer *cell_layer) {
+	GRect bounds = layer_get_bounds(cell_layer);
+	graphics_draw_text(ctx, text, fonts_get_system_font(FONT_KEY_GOTHIC_14_BOLD), GRect(  bounds.origin.x, bounds.origin.y, bounds.size.w, bounds.size.h), GTextOverflowModeTrailingEllipsis, PBL_IF_ROUND_ELSE(GTextAlignmentCenter,GTextAlignmentLeft), NULL);
 }
 
 static void menu_draw_header_callback(GContext* ctx, const Layer *cell_layer, uint16_t section_index, void *data) {
@@ -422,31 +516,31 @@ static void menu_draw_header_callback(GContext* ctx, const Layer *cell_layer, ui
 	switch (section_index) {
 
 		case MENU_SECTION_STATUS:
-      menu_cell_basic_header_draw(ctx, cell_layer, "Status");
+			set_sec_text(ctx, "Status", cell_layer);
       break;
  
 		case MENU_SECTION_ENVIRONMENT:	
 			if (s_sensor_show_count == 0)
 				break;
 			if (s_sensor_flag == false)
-  	    menu_cell_basic_header_draw(ctx, cell_layer, "Environment >>>>");
+				set_sec_text(ctx, "Environment >>>>", cell_layer);
 			else
-	      menu_cell_basic_header_draw(ctx, cell_layer, "Environment");
+				set_sec_text(ctx, "Status", cell_layer);
       break;	
  
 		case MENU_SECTION_DEVICE:	
 			if (s_device_count == 0)
 				break;
-      menu_cell_basic_header_draw(ctx, cell_layer, "Devices");
+			set_sec_text(ctx, "Devices", cell_layer);
       break;
 
 		case MENU_SECTION_EVENT:	
 			if (s_event_show_count == 0)
 				break;
 			if (s_event_flag == false)
-  	    menu_cell_basic_header_draw(ctx, cell_layer, "Events Queue >>>>");
+				set_sec_text(ctx, "Events Queue >>>>", cell_layer);
 			else
-	      menu_cell_basic_header_draw(ctx, cell_layer, "Events Queue");
+				set_sec_text(ctx, "Events Queue", cell_layer);
       break;	
   }
 }
@@ -483,7 +577,7 @@ static void select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *
 		MenuIndex index;
 		index.section = MENU_SECTION_ENVIRONMENT;
 		index.row =  0;
-		menu_layer_set_selected_index( menuLayer, index, MenuRowAlignCenter , true );  	
+		menu_layer_set_selected_index( menuLayer, index, MenuRowAlignCenter , false );  	
 		menu_layer_reload_data(menuLayer);
    
 	} else if (cell_index->section == MENU_SECTION_EVENT) {
@@ -498,7 +592,7 @@ static void select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *
 		MenuIndex index;
 		index.section = MENU_SECTION_EVENT;
 		index.row =  0;
-		menu_layer_set_selected_index( menuLayer, index, MenuRowAlignCenter , true );  	
+		menu_layer_set_selected_index( menuLayer, index, MenuRowAlignCenter , false );  	
 		menu_layer_reload_data(menuLayer);
 
 	} else if (cell_index->section == MENU_SECTION_STATUS) {
@@ -508,7 +602,7 @@ static void select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *
 			MenuIndex index;
 			index.section = MENU_SECTION_STATUS;
 			index.row =  s_status_current;
-			menu_layer_set_selected_index( menuLayer, index, MenuRowAlignCenter , true );  	
+			menu_layer_set_selected_index( menuLayer, index, MenuRowAlignCenter , false );  	
 			menu_layer_reload_data(menuLayer);
 
 		}	else {
@@ -528,7 +622,7 @@ static void select_callback(MenuLayer *menu_layer, MenuIndex *cell_index, void *
 			MenuIndex index;
 			index.section = 0;
 			index.row =  0;
-			menu_layer_set_selected_index( menuLayer, index, MenuRowAlignCenter , true );  	
+			menu_layer_set_selected_index( menuLayer, index, MenuRowAlignCenter , false );  	
 			menu_layer_reload_data(menuLayer);
 		}
 		
@@ -601,38 +695,53 @@ static void window_load(Window *window) {
 	GRect frame = layer_get_frame(windowLayer);
 	TelldusOn = gbitmap_create_with_resource(RESOURCE_ID_IMG_ON);
 	TelldusOff = gbitmap_create_with_resource(RESOURCE_ID_IMG_OFF2);
+	TelldusOnI = gbitmap_create_with_resource(RESOURCE_ID_IMG_ONI);
+	TelldusOffI = gbitmap_create_with_resource(RESOURCE_ID_IMG_OFF2I);
 	NexaHome = gbitmap_create_with_resource(RESOURCE_ID_IMG_NEXA2);
+	NexaHomeI = gbitmap_create_with_resource(RESOURCE_ID_IMG_NEXA2I);
     
 	num_menu_icons = 0;
+	dim_icons_i[num_menu_icons] = gbitmap_create_with_resource(RESOURCE_ID_IMG_DIM0II);
 	dim_icons[num_menu_icons++] = gbitmap_create_with_resource(RESOURCE_ID_IMG_DIM0I);
+  dim_icons_i[num_menu_icons] = gbitmap_create_with_resource(RESOURCE_ID_IMG_DIM25II);
   dim_icons[num_menu_icons++] = gbitmap_create_with_resource(RESOURCE_ID_IMG_DIM25I);
+  dim_icons_i[num_menu_icons] = gbitmap_create_with_resource(RESOURCE_ID_IMG_DIM50II);
   dim_icons[num_menu_icons++] = gbitmap_create_with_resource(RESOURCE_ID_IMG_DIM50I);
+  dim_icons_i[num_menu_icons] = gbitmap_create_with_resource(RESOURCE_ID_IMG_DIM75II);
   dim_icons[num_menu_icons++] = gbitmap_create_with_resource(RESOURCE_ID_IMG_DIM75I);
   dim_icons[num_menu_icons] = gbitmap_create_with_resource(RESOURCE_ID_IMG_DIM100I);
- 
+  dim_icons_i[num_menu_icons] = gbitmap_create_with_resource(RESOURCE_ID_IMG_DIM100II);
+
   
 	textLayer = text_layer_create((GRect) { .origin = { 0, 72 }, .size = { bounds.size.w, 40 } });
+	text_layer_set_background_color(textLayer, PBL_IF_COLOR_ELSE(GColorVividCerulean, GColorWhite)) ;
+	text_layer_set_text_color(textLayer, PBL_IF_COLOR_ELSE(GColorWhite, GColorBlack)) ;
 	text_layer_set_text(textLayer, "Loading...");
 	text_layer_set_text_alignment(textLayer, GTextAlignmentCenter);
 	text_layer_set_overflow_mode(textLayer, GTextOverflowModeWordWrap);
 	layer_add_child(windowLayer, text_layer_get_layer(textLayer));
   
 	menuLayer = menu_layer_create(frame);
+	menu_layer_set_highlight_colors(menuLayer, GColorDukeBlue, GColorWhite);
 	menu_layer_set_callbacks(menuLayer, NULL, (MenuLayerCallbacks) {
+    .get_num_sections = menu_get_num_sections_callback,
+    .get_header_height = menu_get_header_height_callback,
+    .draw_header = (MenuLayerDrawHeaderCallback) menu_draw_header_callback,
 		.get_cell_height = (MenuLayerGetCellHeightCallback) get_cell_height_callback,
 		.draw_row = (MenuLayerDrawRowCallback) draw_row_callback,
 		.get_num_rows = (MenuLayerGetNumberOfRowsInSectionsCallback) get_num_rows_callback,
 		.select_click = (MenuLayerSelectCallback) select_callback,
-		.select_long_click = (MenuLayerSelectCallback) select_long_callback,
-    .draw_header = (MenuLayerDrawHeaderCallback) menu_draw_header_callback,
-    .get_header_height = menu_get_header_height_callback,
-    .get_num_sections = menu_get_num_sections_callback
+		.select_long_click = (MenuLayerSelectCallback) select_long_callback
   //  .draw_separator = (MenuLayerDrawSeparatorCallback) draw_separator_callback
 	});
+	
   scroll_layer_set_shadow_hidden(menu_layer_get_scroll_layer(menuLayer), true);
+	scroll_layer_set_paging(menu_layer_get_scroll_layer(menuLayer), true);
 	menu_layer_set_click_config_onto_window(menuLayer, window);
 	layer_set_hidden(menu_layer_get_layer(menuLayer), true);
 	layer_add_child(windowLayer, menu_layer_get_layer(menuLayer));
+	menu_layer_set_normal_colors(menuLayer,PBL_IF_COLOR_ELSE(GColorVividCerulean, GColorWhite), GColorBlack) ;
+
 }
 
 static void window_unload(Window *window) {
@@ -641,10 +750,14 @@ static void window_unload(Window *window) {
 	text_layer_destroy(textLayer);
   gbitmap_destroy(TelldusOn);
   gbitmap_destroy(TelldusOff);
+  gbitmap_destroy(TelldusOnI);
+  gbitmap_destroy(TelldusOffI);
   gbitmap_destroy(NexaHome);
+  gbitmap_destroy(NexaHomeI);
   
   for (int i = 0; i < 5; i++) {
     gbitmap_destroy(dim_icons[i]);
+    gbitmap_destroy(dim_icons_i[i]);
   }
  }
 
@@ -656,7 +769,7 @@ static void init(void) {
 		.load = window_load,
 		.unload = window_unload,
 	});
-	
+	window_set_background_color(window,PBL_IF_COLOR_ELSE(GColorVividCerulean, GColorWhite));
 	const bool animated = true;
 	s_sensor_flag = persist_exists(S_SENSOR_FLAG_PKEY) ? persist_read_bool(S_SENSOR_FLAG_PKEY) : false;
 	s_event_flag = persist_exists(S_EVENT_FLAG_PKEY) ? persist_read_bool(S_EVENT_FLAG_PKEY) : false;
@@ -670,7 +783,8 @@ static void init(void) {
 	app_message_register_outbox_sent(out_sent_handler);
 	app_message_register_outbox_failed(out_failed_handler);
 
-	app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
+	app_message_open(1024,1024);
+	//	app_message_open(app_message_inbox_size_maximum(), app_message_outbox_size_maximum());
 }
 
 static void deinit(void) {
