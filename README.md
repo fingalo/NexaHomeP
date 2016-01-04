@@ -38,6 +38,9 @@ Also uncheck the sensor with id 52 checkbox in the configuration screen.
 - Added configuration for sensors, with temp / hum on same line.
 - Toggle sensor name text big/small.
 
+2.0
+- Added support for Pebble ver 3.x, Aplite, Basalt and Chalk
+
 
 
 
